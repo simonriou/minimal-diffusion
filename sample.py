@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import torchvision
 import torch
 
+import matplotlib
+print(matplotlib.get_backend())
+
 def main():
     print("Loading model...")
     model = MinimalDiffusion().to(DEVICE)
@@ -18,7 +21,8 @@ def main():
     grid = torchvision.utils.make_grid(samples, nrow=4)
     plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
     plt.axis('off')
-    plt.show()
+    plt.imsave("samples.png", grid.permute(1, 2, 0).cpu().numpy())
+    print("Saved image to samples.png")
 
 if __name__ == '__main__':
     main()
