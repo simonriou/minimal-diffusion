@@ -2,6 +2,7 @@ from model import MinimalDiffusion
 from diffusion import q_sample, beta, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod
 from data import get_dataloader
 from config import *
+import os
 
 import torch
 import torch.nn.functional as F
@@ -26,7 +27,8 @@ def train():
             optimizer.step()
 
         print(f"Epoch {epoch}: Loss = {loss.item():.4f}")
-        torch.save(model.state_dict(), f"model_epoch{epoch+1}.pth")
+        os.makedirs("checkpoints", exist_ok=True)
+        torch.save(model.state_dict(), f"checkpoints/model_epoch{epoch}.pth")
 
 if __name__ == "__main__":
     train()
