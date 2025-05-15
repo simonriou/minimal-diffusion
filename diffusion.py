@@ -1,53 +1,71 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
+from config import T, DEVICE
 
-class SinusoidalTimeEmbedding(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
+# ======================
+# Noise schedule
+# ======================
+beta = torch.linspace(1e-4, 0.02, T).to(DEVICE)
+alpha = 1. - beta
+alpha_cumprod = torch.cumprod(alpha, dim=0)
+alpha_cumprod_prev = torch.cat([torch.tensor([1.0], device=DEVICE), alpha_cumprod[:-1]])
 
-    def forward(self, t):
-        device = t.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = t[:, None].float() * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
-        if self.dim % 2 == 1:
-            emb = torch.cat([emb, torch.zeros_like(emb[:, :1])], dim=-1)
-        return emb
+# Precomputed constants
+sqrt_alpha_cumprod = torch.sqrt(alpha_cumprod)
+sqrt_one_minus_alpha_cumprod = torch.sqrt(1. - alpha_cumprod)
+sqrt_recip_alpha = torch.sqrt(1.0 / alpha)
+posterior_variance = beta * (1. - alpha_cumprod_prev) / (1. - alpha_cumprod)
 
-class MinimalDiffusion(nn.Module):
-    def __init__(self, img_channels=3, time_emb_dim=64):
-        super().__init__()
-        self.time_embed = SinusoidalTimeEmbedding(time_emb_dim)
-        self.time_mlp = nn.Sequential(
-            nn.Linear(time_emb_dim, time_emb_dim),
-            nn.ReLU(),
-            nn.Linear(time_emb_dim, time_emb_dim)
-        )
-        self.conv1 = nn.Conv2d(img_channels + time_emb_dim, 64, 3, padding=1)
-        self.conv2 = nn.Conv2d(64, 64, 3, padding=1)
-        self.conv3 = nn.Conv2d(64, img_channels, 3, padding=1)
+# ======================
+# Forward diffusion q(x_t | x_0)
+# ======================
+def q_sample(x_0, t, noise=None):
+    """
+    Sample x_t given x_0 and timestep t using the forward process.
+    """
+    if noise is None:
+        noise = torch.randn_like(x_0)
+    t = t.long()
+    sqrt_alpha_cumprod_t = sqrt_alpha_cumprod[t][:, None, None, None]
+    sqrt_one_minus_alpha_cumprod_t = sqrt_one_minus_alpha_cumprod[t][:, None, None, None]
+    return sqrt_alpha_cumprod_t * x_0 + sqrt_one_minus_alpha_cumprod_t * noise
 
-    def forward(self, x, t):
-        """
-        x: images tensor, shape (batch, channels, height, width)
-        t: timesteps tensor, shape (batch,)
-        """
-        # Compute sinusoidal time embedding
-        t_emb = self.time_embed(t)
-        t_emb = self.time_mlp(t_emb)  # project
+# ======================
+# Reverse process p(x_{t-1} | x_t)
+# ======================
+@torch.no_grad()
+def p_sample(model, x_t, t):
+    """
+    One step of the reverse diffusion process.
+    """
+    t_tensor = torch.tensor([t] * x_t.shape[0], device=DEVICE)
+    beta_t = beta[t]
+    sqrt_one_minus_alpha_cumprod_t = sqrt_one_minus_alpha_cumprod[t]
+    sqrt_recip_alpha_t = sqrt_recip_alpha[t]
 
-        # Reshape to (batch, time_emb_dim, 1, 1) and repeat spatially
-        t_emb = t_emb.view(t.size(0), -1, 1, 1).repeat(1, 1, x.size(2), x.size(3))
+    # Predict noise
+    predicted_noise = model(x_t, t_tensor)
 
-        # Concatenate time embedding to input
-        x = torch.cat([x, t_emb], dim=1)
+    # Compute model mean (µ_t)
+    model_mean = sqrt_recip_alpha_t * (
+        x_t - (beta_t / sqrt_one_minus_alpha_cumprod_t) * predicted_noise
+    )
 
-        # Pass through conv layers
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        return self.conv3(x)
+    if t == 0:
+        return model_mean
+    else:
+        noise = torch.randn_like(x_t)
+        return model_mean + torch.sqrt(posterior_variance[t]) * noise
+
+# ======================
+# Full sampling loop
+# ======================
+@torch.no_grad()
+def sample(model, image_size=32, n_samples=16):
+    """
+    Sample from the model starting from pure noise.
+    """
+    model.eval()
+    x_t = torch.randn(n_samples, 3, image_size, image_size).to(DEVICE)
+    for t_ in reversed(range(T)):
+        x_t = p_sample(model, x_t, t_)
+    return x_t
