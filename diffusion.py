@@ -1,5 +1,6 @@
 import torch
 from config import T, DEVICE
+from utils import extract
 
 # ======================
 # Noise schedule
@@ -24,9 +25,8 @@ def q_sample(x_0, t, noise=None):
     """
     if noise is None:
         noise = torch.randn_like(x_0)
-    t = t.long()
-    sqrt_alpha_cumprod_t = sqrt_alpha_cumprod[t][:, None, None, None]
-    sqrt_one_minus_alpha_cumprod_t = sqrt_one_minus_alpha_cumprod[t][:, None, None, None]
+    sqrt_alpha_cumprod_t = extract(sqrt_alpha_cumprod, t, x_0.shape)
+    sqrt_one_minus_alpha_cumprod_t = extract(sqrt_one_minus_alpha_cumprod, t, x_0.shape)
     return sqrt_alpha_cumprod_t * x_0 + sqrt_one_minus_alpha_cumprod_t * noise
 
 # ======================
@@ -37,24 +37,28 @@ def p_sample(model, x_t, t):
     """
     One step of the reverse diffusion process.
     """
-    t_tensor = torch.tensor([t] * x_t.shape[0], device=DEVICE)
-    beta_t = beta[t]
-    sqrt_one_minus_alpha_cumprod_t = sqrt_one_minus_alpha_cumprod[t]
-    sqrt_recip_alpha_t = sqrt_recip_alpha[t]
+    t_tensor = torch.full((x_t.shape[0],), t, device=DEVICE, dtype=torch.long)
 
     # Predict noise
     predicted_noise = model(x_t, t_tensor)
+
+    # Retrieve constants
+    beta_t = extract(beta, t_tensor, x_t.shape)
+    sqrt_one_minus_alpha_cumprod_t = extract(sqrt_one_minus_alpha_cumprod, t_tensor, x_t.shape)
+    sqrt_recip_alpha_t = extract(sqrt_recip_alpha, t_tensor, x_t.shape)
+    posterior_var_t = extract(posterior_variance, t_tensor, x_t.shape)
 
     # Compute model mean (µ_t)
     model_mean = sqrt_recip_alpha_t * (
         x_t - (beta_t / sqrt_one_minus_alpha_cumprod_t) * predicted_noise
     )
 
+    # If t == 0, return mean directly (no noise), else sample from normal distribution
     if t == 0:
         return model_mean
     else:
         noise = torch.randn_like(x_t)
-        return model_mean + torch.sqrt(posterior_variance[t]) * noise
+        return model_mean + torch.sqrt(posterior_var_t) * noise
 
 # ======================
 # Full sampling loop
