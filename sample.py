@@ -22,6 +22,7 @@ def main():
     grid = torchvision.utils.make_grid(samples, nrow=4)
     plt.imsave("samples.png", grid.permute(1, 2, 0).cpu().numpy())
     print("Saved image to samples.png")
+    plt.show()
 
 if __name__ == '__main__':
     main()
