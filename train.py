@@ -2,13 +2,13 @@ import os
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from model import MinimalDiffusion
+from model import MinimalUNet
 from diffusion import q_sample
 from data import get_dataloaders
 from config import DEVICE, LR, EPOCHS, T, BATCH_SIZE
 
 def train():
-    model = MinimalDiffusion().to(DEVICE)
+    model = MinimalUNet().to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     # Scheduler with plateau detection on validation loss
