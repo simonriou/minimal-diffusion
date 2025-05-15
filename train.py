@@ -1,4 +1,4 @@
-from model import MinimalDiffusion
+from model import MinimalUNet
 from diffusion import q_sample, beta, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod
 from data import get_dataloader
 from config import *
@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 def train():
-    model = MinimalDiffusion().to(DEVICE)
+    model = MinimalUNet().to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     dataloader = get_dataloader(BATCH_SIZE)
 
