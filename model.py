@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from utils import get_num_groups
 
 class SiLU(nn.Module):
     def forward(self, x):
@@ -26,11 +27,11 @@ class SinusoidalTimeEmbedding(nn.Module):
 class ResidualConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, time_emb_dim, dropout=0.1):
         super().__init__()
-        self.norm1 = nn.GroupNorm(8, in_channels)
+        self.norm1 = nn.GroupNorm(get_num_groups(in_channels), in_channels)
         self.act1 = SiLU()
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1)
 
-        self.norm2 = nn.GroupNorm(8, out_channels)
+        self.norm2 = nn.GroupNorm(get_num_groups(out_channels), out_channels)
         self.act2 = SiLU()
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1)
@@ -57,7 +58,7 @@ class ResidualConvBlock(nn.Module):
 class SpatialAttention(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.norm = nn.GroupNorm(8, channels)
+        self.norm = nn.GroupNorm(get_num_groups(channels), channels)
         self.q = nn.Conv2d(channels, channels, 1)
         self.k = nn.Conv2d(channels, channels, 1)
         self.v = nn.Conv2d(channels, channels, 1)
@@ -119,7 +120,7 @@ class ImprovedUNetV2(nn.Module):
         self.conv_up1 = ResidualConvBlock(base_channels * 2, base_channels, time_emb_dim)
 
         # Final output
-        self.final_norm = nn.GroupNorm(8, base_channels)
+        self.final_norm = nn.GroupNorm(get_num_groups(base_channels), base_channels)
         self.final_act = SiLU()
         self.final_conv = nn.Conv2d(base_channels, img_channels, 1)
 
