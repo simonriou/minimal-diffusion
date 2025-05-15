@@ -16,11 +16,10 @@ def main():
 
     print("Sampling...")
     samples = sample(model, image_size=IMG_SIZE, n_samples=16)
-    samples = (samples + 1) / 2  # rescale to [0, 1]
-
+    samples = (samples + 1) / 2  # scale to [0, 1]
+    samples = torch.clamp(samples, 0.0, 1.0)  # ensure valid range
+    
     grid = torchvision.utils.make_grid(samples, nrow=4)
-    plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
-    plt.axis('off')
     plt.imsave("samples.png", grid.permute(1, 2, 0).cpu().numpy())
     print("Saved image to samples.png")
 
