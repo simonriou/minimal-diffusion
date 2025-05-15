@@ -2,21 +2,28 @@ import os
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from model import ImprovedUNet
+from copy import deepcopy  # ← required!
+from model import ImprovedUNetV2
 from diffusion import q_sample
 from data import get_dataloaders
 from config import DEVICE, LR, EPOCHS, T, BATCH_SIZE
 
 def train():
-    model = ImprovedUNet().to(DEVICE)
+    model = ImprovedUNetV2().to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
-    # Scheduler with plateau detection on validation loss
+    # EMA model setup
+    ema_model = deepcopy(model)
+    ema_model.eval()  # ← Prevents training mode
+    for param in ema_model.parameters():
+        param.requires_grad_(False)  # ← Ensures no gradients are tracked
+    ema_decay = 0.999
+
+    # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=3, verbose=True
     )
 
-    # Load train and val sets
     train_loader, val_loader = get_dataloaders(BATCH_SIZE)
 
     for epoch in range(EPOCHS):
@@ -34,6 +41,12 @@ def train():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            # EMA update
+            with torch.no_grad():
+                for ema_param, param in zip(ema_model.parameters(), model.parameters()):
+                    ema_param.data.mul_(ema_decay).add_(param.data, alpha=1 - ema_decay)
+
             train_losses.append(loss.item())
 
         avg_train_loss = sum(train_losses) / len(train_losses)
@@ -52,15 +65,15 @@ def train():
                 val_losses.append(val_loss.item())
 
         avg_val_loss = sum(val_losses) / len(val_losses)
-        scheduler.step(avg_val_loss)  # Update LR if plateau
+        scheduler.step(avg_val_loss)
 
-        # Print logs
         current_lr = optimizer.param_groups[0]['lr']
         print(f"\nEpoch {epoch}: Train Loss = {avg_train_loss:.4f} | Val Loss = {avg_val_loss:.4f} | LR = {current_lr:.6f}")
 
-        # Save model
+        # Save models
         os.makedirs("checkpoints", exist_ok=True)
         torch.save(model.state_dict(), f"checkpoints/model_epoch{epoch}.pth")
+        torch.save(ema_model.state_dict(), f"checkpoints/ema_model_epoch{epoch}.pth")
 
 if __name__ == "__main__":
     train()
