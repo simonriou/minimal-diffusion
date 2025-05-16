@@ -50,7 +50,7 @@ def train():
             mse = F.mse_loss(predicted, noise)
             x_0_hat = x_t - noise
             perc = perceptual_loss(x_0_hat, x_0, vgg, F)
-            loss = mse + 0.1 * perc
+            loss = mse + 0.001 * perc
 
             optimizer.zero_grad()
             loss.backward()
