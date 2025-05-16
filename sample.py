@@ -11,7 +11,7 @@ print(matplotlib.get_backend())
 def main():
     print("Loading model...")
     model = ImprovedUNetV2().to(DEVICE)
-    model.load_state_dict(torch.load(f"checkpoints/model_epoch{EPOCHS-1}.pth", map_location=DEVICE), strict=False)
+    model.load_state_dict(torch.load(f"checkpoints/ema_model_epoch40.pth", map_location=DEVICE), strict=False)
     model.eval()
 
     print("Sampling...")

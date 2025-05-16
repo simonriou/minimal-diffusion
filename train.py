@@ -7,6 +7,10 @@ from model import ImprovedUNetV2
 from diffusion import q_sample
 from data import get_dataloaders
 from config import DEVICE, LR, EPOCHS, T, BATCH_SIZE
+from utils import perceptual_loss
+
+from torchvision.models import vgg16
+from torchvision.models.feature_extraction import create_feature_extractor
 
 def train():
     model = ImprovedUNetV2().to(DEVICE)
@@ -18,6 +22,11 @@ def train():
     for param in ema_model.parameters():
         param.requires_grad_(False)  # ← Ensures no gradients are tracked
     ema_decay = 0.999
+
+    # VGG16 Feature Extraction for Perceptual Loss
+    vgg = vgg16(pretrained=True).features[:16].to(DEVICE).eval()
+    for param in vgg.parameters():
+        param.requires_grad = False
 
     # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -36,7 +45,12 @@ def train():
             noise = torch.randn_like(x_0)
             x_t = q_sample(x_0, t, noise)
             predicted = model(x_t, t)
-            loss = F.mse_loss(predicted, noise)
+            
+            # Compute loss
+            mse = F.mse_loss(predicted, noise)
+            x_0_hat = x_t - noise
+            perc = perceptual_loss(x_0_hat, x_0, vgg)
+            loss = mse + 0.1 * perc
 
             optimizer.zero_grad()
             loss.backward()
